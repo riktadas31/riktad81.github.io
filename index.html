@@ -1,0 +1,213 @@
+!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BMI Calculator</title>
+  <style>
+    :root{--bg:#f4f7fb;--card:#fff;--accent:#6c63ff;--muted:#6b7280}
+    *{box-sizing:border-box}
+    body{font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin:0; background:linear-gradient(180deg,var(--bg),#eef2ff 70%); color:#111}
+    .wrap{max-width:820px;margin:48px auto;padding:24px}
+    .card{background:var(--card);border-radius:14px;padding:20px;box-shadow:0 6px 20px rgba(20,20,50,0.08)}
+    header{display:flex;align-items:center;gap:16px}
+    header h1{margin:0;font-size:20px}
+    .flex{display:flex;gap:18px;align-items:center}
+
+    form{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+    label{font-size:13px;color:var(--muted);display:block;margin-bottom:6px}
+    input[type="number"], select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9f2;font-size:15px}
+    .units{display:flex;gap:8px}
+    .btn{background:var(--accent);color:#fff;padding:10px 14px;border-radius:10px;border:0;cursor:pointer;font-weight:600}
+    .btn.secondary{background:transparent;color:var(--accent);border:1px solid rgba(108,99,255,0.12)}
+
+    .result{margin-top:18px;display:flex;gap:18px;align-items:center}
+    .bignum{font-size:36px;font-weight:700}
+    .category{padding:8px 12px;border-radius:999px;font-weight:600}
+
+    .muted{color:var(--muted);font-size:13px}
+
+    /* responsive */
+    @media (max-width:640px){form{grid-template-columns:1fr} .wrap{margin:20px}}
+
+    /* color hints */
+    .underweight{background:#ffefef;color:#ef4444}
+    .normal{background:#ecfdf5;color:#059669}
+    .overweight{background:#fff7ed;color:#f59e0b}
+    .obese{background:#fff1f2;color:#be123c}
+
+    /* history */
+    .history{margin-top:16px;border-top:1px dashed #eef2ff;padding-top:14px}
+    .history ul{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+    .history li{display:flex;justify-content:space-between;background:#fbfdff;padding:10px;border-radius:8px;border:1px solid #f1f5f9;font-size:14px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <header>
+        <div style="width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#8b5cf6);display:flex;align-items:center;justify-content:center;color:white;font-weight:700">BMI</div>
+        <div>
+          <h1>BMI Calculator</h1>
+          <div class="muted">Quickly calculate your Body Mass Index and see the category.</div>
+        </div>
+      </header>
+
+      <form id="bmiForm" aria-label="BMI form">
+        <div>
+          <label for="weight">Weight</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="weight" type="number" min="0" step="any" placeholder="e.g. 70" required />
+            <select id="weightUnit" aria-label="weight unit">
+              <option value="kg">kg</option>
+              <option value="lb">lb</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label for="height">Height</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="height" type="number" min="0" step="any" placeholder="e.g. 170" required />
+            <select id="heightUnit" aria-label="height unit">
+              <option value="cm">cm</option>
+              <option value="m">m</option>
+              <option value="in">in</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label for="age">Age (optional)</label>
+          <input id="age" type="number" min="1" step="1" placeholder="e.g. 28" />
+        </div>
+
+        <div style="display:flex;flex-direction:column;justify-content:flex-end">
+          <label class="muted">Actions</label>
+          <div style="display:flex;gap:8px">
+            <button id="calcBtn" type="submit" class="btn">Calculate</button>
+            <button id="resetBtn" type="button" class="btn secondary">Reset</button>
+          </div>
+        </div>
+      </form>
+
+      <div id="output" class="result" aria-live="polite" style="display:none">
+        <div>
+          <div class="bignum" id="bmiValue">--</div>
+          <div class="muted">BMI</div>
+        </div>
+        <div>
+          <div id="bmiCategory" class="category">--</div>
+          <div class="muted" id="bmiAdvice">&nbsp;</div>
+        </div>
+      </div>
+
+      <div class="history">
+        <div class="muted">Recent calculations</div>
+        <ul id="historyList"></ul>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Utility conversions
+    function lbToKg(lb){return lb * 0.45359237}
+    function inToM(i){return i * 0.0254}
+
+    const form = document.getElementById('bmiForm')
+    const weightEl = document.getElementById('weight')
+    const heightEl = document.getElementById('height')
+    const weightUnitEl = document.getElementById('weightUnit')
+    const heightUnitEl = document.getElementById('heightUnit')
+    const bmiValueEl = document.getElementById('bmiValue')
+    const bmiCategoryEl = document.getElementById('bmiCategory')
+    const bmiAdviceEl = document.getElementById('bmiAdvice')
+    const outputEl = document.getElementById('output')
+    const historyList = document.getElementById('historyList')
+    const resetBtn = document.getElementById('resetBtn')
+
+    // Load history from localStorage
+    function loadHistory(){
+      const raw = localStorage.getItem('bmi_history')
+      if(!raw) return []
+      try{return JSON.parse(raw)}catch(e){return []}
+    }
+    function saveHistory(arr){localStorage.setItem('bmi_history', JSON.stringify(arr))}
+
+    function renderHistory(){
+      const list = loadHistory()
+      historyList.innerHTML = ''
+      if(list.length===0){
+        historyList.innerHTML = '<li style="justify-content:center;color:var(--muted)">No recent calculations</li>'
+        return
+      }
+      list.slice().reverse().forEach(item=>{
+        const li = document.createElement('li')
+        li.innerHTML = `<div>${item.date} — ${item.bmi} BMI</div><div class="muted">${item.cat}</div>`
+        historyList.appendChild(li)
+      })
+    }
+
+    function getCategory(bmi){
+      if(bmi < 18.5) return {name:'Underweight', className:'underweight', advice:'Consider gaining weight gradually.'}
+      if(bmi < 25) return {name:'Normal', className:'normal', advice:'Great — keep a balanced diet and activity.'}
+      if(bmi < 30) return {name:'Overweight', className:'overweight', advice:'Try increasing activity and reviewing diet.'}
+      return {name:'Obese', className:'obese', advice:'Consult a healthcare professional for guidance.'}
+    }
+
+    function formatDate(d){
+      return d.toLocaleString()
+    }
+
+    form.addEventListener('submit', function(e){
+      e.preventDefault()
+      const wRaw = parseFloat(weightEl.value)
+      const hRaw = parseFloat(heightEl.value)
+      if(!wRaw || !hRaw){
+        alert('Please enter valid weight and height values.')
+        return
+      }
+
+      // convert to kg and meters
+      let weightKg = wRaw
+      if(weightUnitEl.value === 'lb') weightKg = lbToKg(wRaw)
+
+      let heightM
+      if(heightUnitEl.value === 'cm') heightM = hRaw / 100
+      else if(heightUnitEl.value === 'm') heightM = hRaw
+      else if(heightUnitEl.value === 'in') heightM = inToM(hRaw)
+
+      if(heightM <= 0){ alert('Please enter a valid height.'); return }
+
+      const bmi = weightKg / (heightM * heightM)
+      const bmiRounded = Math.round(bmi * 10) / 10
+
+      const cat = getCategory(bmiRounded)
+
+      bmiValueEl.textContent = bmiRounded.toFixed(1)
+      bmiCategoryEl.textContent = cat.name
+      bmiCategoryEl.className = 'category ' + cat.className
+      bmiAdviceEl.textContent = cat.advice
+      outputEl.style.display = 'flex'
+
+      // push to history (keep last 10)
+      const history = loadHistory()
+      history.push({date: formatDate(new Date()), bmi: bmiRounded.toFixed(1), cat: cat.name})
+      if(history.length > 10) history.shift()
+      saveHistory(history)
+      renderHistory()
+    })
+
+    resetBtn.addEventListener('click', ()=>{
+      weightEl.value = ''
+      heightEl.value = ''
+      document.getElementById('age').value = ''
+      outputEl.style.display = 'none'
+    })
+
+    // initialize
+    renderHistory()
+  </script>
+</body>
+</html>
